@@ -1,119 +1,169 @@
-import ttkbootstrap as ttk
-from ttkbootstrap.constants import *
-from tkinter import font as tkfont
-from PIL import Image, ImageTk  # para trabalhar com imagens
+import pygame
+import sys
+import os
 
-def analise_p():
-    print("Análise P iniciada...")
-
-def analise_d():
-    print("Análise D iniciada...")
-
-def criacao_i():
-    print("Criação I iniciada...")
-
-def analise_dates():
-    print("Análise Dates iniciada...")
-
-# --- Janela principal ---
-app = ttk.Window(
-    title="Painel de Análises - Maria Pitanga",
-    themename="flatly",
-    size=(1000, 800),
-    resizable=(True, True)
+from components.ui_base import (
+    COR_FUNDO_BASE, COR_DESTAQUE, ajustar_claridade,
+    draw_rounded_rect, draw_shadow, draw_vignette,
+    Botao, calcular_layout
 )
 
-# --- Configurações da grade ---
-app.rowconfigure(1, weight=1)
-app.columnconfigure(0, weight=1)
+# Importa a tela de planilha
+from screens.planilha import TelaPlanilha
 
-# --- Carrega e define o fundo ---
-bg_image = Image.open("img.png")
-bg_image = bg_image.resize((1000, 800), Image.LANCZOS)
-bg_photo = ImageTk.PhotoImage(bg_image)
+pygame.init()
 
-background_label = ttk.Label(app, image=bg_photo)
-background_label.image = bg_photo
-background_label.place(relx=0, rely=0, relwidth=1, relheight=1)
+LARGURA_INICIAL, ALTURA_INICIAL = 500, 600
+tela = pygame.display.set_mode((LARGURA_INICIAL, ALTURA_INICIAL), pygame.RESIZABLE)
+pygame.display.set_caption('Maria Pitanga - Açaí e Gelatos')
 
-# --- Cores e fontes ---
-COR_TEXTO = "white"
-title_font = tkfont.Font(family="Helvetica", size=22, weight="bold")
-footer_font = tkfont.Font(family="Arial", size=10)
+# Carrega fundo (opcional)
+ARQ_IMAGEM = 'img.png'
+BASE_DIR = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+CAMINHO_IMAGEM = os.path.join(BASE_DIR, ARQ_IMAGEM)
 
-# --- Título ---
-titulo = ttk.Label(
-    app,
-    text="Painel de Análises e Criação",
-    font=title_font,
-    foreground=COR_TEXTO
-    # background removido para evitar erro e “caixa” sólida
-)
-titulo.grid(row=0, column=0, pady=40, sticky="n")
-
-# --- Frame central ---
-frame_botoes = ttk.Frame(app, bootstyle="dark")
-frame_botoes.grid(row=1, column=0, padx=40, pady=40, sticky="nsew")
-frame_botoes.configure(style="TFrame")
-
-for r in range(2):
-    frame_botoes.rowconfigure(r, weight=1, uniform="rows")
-for c in range(2):
-    frame_botoes.columnconfigure(c, weight=1, uniform="cols")
-
-# --- Estilo dos botões ---
-style = ttk.Style()
-style.configure(
-    "Pitanga.TButton",
-    font=("Helvetica", 14, "bold"),
-    foreground=COR_TEXTO,
-    background="#4B006E",
-    padding=12,
-    borderwidth=0
-)
-style.map(
-    "Pitanga.TButton",
-    background=[("active", "#7B1FA2")],
-    relief=[("pressed", "sunken")]
-)
-
-# --- Botões ---
-ttk.Button(frame_botoes, text="Análise P", command=analise_p, style="Pitanga.TButton")\
-    .grid(row=0, column=0, padx=20, pady=20, sticky="nsew")
-ttk.Button(frame_botoes, text="Análise D", command=analise_d, style="Pitanga.TButton")\
-    .grid(row=0, column=1, padx=20, pady=20, sticky="nsew")
-ttk.Button(frame_botoes, text="Criação I", command=criacao_i, style="Pitanga.TButton")\
-    .grid(row=1, column=0, padx=20, pady=20, sticky="nsew")
-ttk.Button(frame_botoes, text="Análise Dates", command=analise_dates, style="Pitanga.TButton")\
-    .grid(row=1, column=1, padx=20, pady=20, sticky="nsew")
-
-# --- Rodapé ---
-rodape = ttk.Label(
-    app,
-    text="© 2025 Maria Pitanga - Assistência de TI",
-    font=footer_font,
-    foreground=COR_TEXTO
-    # background removido (antes estava "#00000000")
-)
-rodape.grid(row=2, column=0, pady=10, sticky="s")
-
-# --- Resize dinâmico da imagem de fundo ---
-def on_resize(event):
-    # Evita redimensionar com valores inválidos (0 ou negativos)
-    w = max(1, int(event.width))
-    h = max(1, int(event.height))
-
+bg_image = None
+if os.path.exists(CAMINHO_IMAGEM):
     try:
-        new_bg = bg_image.resize((w, h), Image.LANCZOS)
-        bg_photo_resized = ImageTk.PhotoImage(new_bg)
-        background_label.configure(image=bg_photo_resized)
-        background_label.image = bg_photo_resized  # mantém referência
+        bg_image = pygame.image.load(CAMINHO_IMAGEM).convert()
     except Exception as e:
-        # Log simples pra você ver se algo diferente acontecer
-        print(f"[on_resize] erro ao redimensionar: {e} (w={w}, h={h})")
+        print(f"Erro ao carregar a imagem: {e}")
 
+def escalar_fundo(img, tamanho):
+    if not img:
+        return None
+    largura, altura = tamanho
+    return pygame.transform.smoothscale(img, (largura, altura))
 
-app.bind("<Configure>", on_resize)
+bg_escalado = escalar_fundo(bg_image, tela.get_size())
 
-# --- Executar app ---
-app.mainloop()
+# =====================
+# Gerenciador de telas
+# =====================
+class ScreenManager:
+    def __init__(self):
+        self.stack = []
+
+    def push(self, screen):
+        self.stack.append(screen)
+
+    def pop(self):
+        if self.stack:
+            self.stack.pop()
+
+    def current(self):
+        return self.stack[-1] if self.stack else None
+
+manager = ScreenManager()
+
+# =====================
+# Tela Menu Principal
+# =====================
+class TelaMenu:
+    def __init__(self, surface):
+        self.surface = surface
+        self.titulo = 'Centro de Análises'
+
+        self.botoes = [
+            Botao('Análise de Planilha', self.go_planilha),
+            Botao('Análise de Documentos', lambda: print('Análise de Documentos iniciada!')),
+            Botao('Análise de Imagem', lambda: print('Análise de Imagem iniciada!')),
+            Botao('Análise de Dados', lambda: print('Análise de Dados iniciada!')),
+        ]
+        self.recalcular_layout()
+
+    def go_planilha(self):
+        manager.push(TelaPlanilha(self.surface, on_voltar=manager.pop))
+
+    def recalcular_layout(self):
+        (self.card_rect, self.largura_botao, self.altura_botao,
+         self.espacamento, self.padding_vertical,
+         self.fonte_botoes, self.fonte_titulo) = calcular_layout(self.surface, len(self.botoes))
+
+        # posiciona botões
+        x = self.card_rect.x + (self.card_rect.w - self.largura_botao) // 2
+        y = self.card_rect.y + self.padding_vertical
+        for b in self.botoes:
+            b.rect = pygame.Rect(x, y, self.largura_botao, self.altura_botao)
+            y += self.altura_botao + self.espacamento
+
+    def handle_event(self, event):
+        if event.type == pygame.VIDEORESIZE:
+            self.recalcular_layout()
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            for botao in self.botoes:
+                botao.pressed = True
+        elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            for botao in self.botoes:
+                if botao.pressed:
+                    botao.pressed = False
+                    botao.checar_clique(event.pos)
+
+    def update(self, dt):
+        mouse_pos = pygame.mouse.get_pos()
+        for botao in self.botoes:
+            botao.atualizar_hover(mouse_pos)
+
+    def draw(self):
+        # fundo
+        if bg_escalado is not None:
+            self.surface.blit(bg_escalado, (0, 0))
+        else:
+            self.surface.fill(COR_FUNDO_BASE)
+
+        draw_vignette(self.surface)
+
+        # Card translúcido
+        card_surf = pygame.Surface(self.card_rect.size, pygame.SRCALPHA)
+        for i in range(self.card_rect.height):
+            import components.ui_base as ui_base
+            alpha = int(ui_base.lerp(90, 140, i / max(1, self.card_rect.height - 1)))
+            pygame.draw.rect(card_surf, (255, 255, 255, alpha), (0, i, self.card_rect.width, 1))
+        mask = pygame.Surface(self.card_rect.size, pygame.SRCALPHA)
+        draw_rounded_rect(mask, mask.get_rect(), (255, 255, 255, 0), radius=24)
+        card_surf.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
+
+        draw_shadow(self.surface, self.card_rect, radius=28, offset=(0, 10), alpha=90)
+        self.surface.blit(card_surf, self.card_rect)
+        pygame.draw.rect(self.surface, ajustar_claridade(COR_DESTAQUE, 1.4), self.card_rect, width=2, border_radius=24)
+
+        titulo_render = self.fonte_titulo.render(self.titulo, True, (255, 255, 255))
+        self.surface.blit(
+            titulo_render,
+            (self.card_rect.centerx - titulo_render.get_width() // 2,
+             self.card_rect.y - max(8, titulo_render.get_height()) - 8),
+        )
+
+        for botao in self.botoes:
+            botao.desenhar(self.surface, self.fonte_botoes)
+
+# =====================
+# Loop principal
+# =====================
+clock = pygame.time.Clock()
+manager.push(TelaMenu(tela))
+
+rodando = True
+while rodando:
+    dt = clock.tick(60) / 1000.0
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            rodando = False
+        elif event.type == pygame.VIDEORESIZE:
+            tela = pygame.display.set_mode((event.w, event.h), pygame.RESIZABLE)
+            bg_escalado = escalar_fundo(bg_image, (event.w, event.h))
+        # repassa evento à tela ativa
+        scr = manager.current()
+        if scr:
+            scr.handle_event(event)
+
+    # atualiza e desenha tela ativa
+    scr = manager.current()
+    if scr:
+        scr.update(dt)
+        scr.draw()
+
+    pygame.display.flip()
+
+pygame.quit()
+sys.exit()
